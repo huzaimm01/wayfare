@@ -1,5 +1,5 @@
 // The one setting you must change: the URL of your deployed Worker, no trailing slash needed.
-export const WORKER_URL = '';
+export const WORKER_URL = 'https://wayfare.huzaimm01.workers.dev';
 
 export const REFRESH_MS = 20000;
 export const WALK = { mps: 1.3, detour: 1.25 }; // walking speed and a straight-line-to-street detour factor

@@ -28,6 +28,12 @@ function setPalette(bg) {
   const p = palette(state.colour ? bg : '#2b2e35');
   const s = document.documentElement.style;
   s.setProperty('--bg', p.bg); s.setProperty('--fg', p.fg); s.setProperty('--dim', p.dim);
+  // Light palettes (yellow, orange) would put dark text on a light sheet: yellow on yellow.
+  // Those get a dark sheet instead; the palette colour survives as the accent.
+  const light = p.fg === '#111111';
+  s.setProperty('--sheet-bg', light ? '#191c20' : p.bg);
+  s.setProperty('--sheet-fg', light ? '#ffffff' : p.fg);
+  s.setProperty('--accent', p.bg);
   $('meta[name=theme-color]').setAttribute('content', p.bg);
   if (p.fg !== currentFg) {
     currentFg = p.fg;
@@ -81,17 +87,22 @@ async function pickStation() {
 
 function openMenu() {
   const dlg = $('#menu'), body = $('#menuBody');
-  const agencyBtn = (key, label) => h('button', { class: 'btn wide', type: 'button', 'aria-pressed': String(state.agency === key), onclick: () => { state.agency = key; save(); dlg.close(); navigate('board'); } }, label);
+  const segInd = h('span', { class: 'seg-ind' });
+  const segBtn = (key, label) => h('button', { type: 'button', 'aria-pressed': String(state.agency === key), onclick: () => { state.agency = key; save(); dlg.close(); navigate('board'); } }, label);
+  const seg = h('div', { class: 'seg' }, segInd, segBtn('go', 'GO Transit'), segBtn('ttc', 'TTC'));
+  segInd.style.transform = state.agency === 'ttc' ? 'translateX(100%)' : 'translateX(0)';
+  const sw = h('button', { class: 'switch', type: 'button', role: 'switch', 'aria-checked': String(state.colour), 'aria-label': 'Colour', onclick: e => { state.colour = !state.colour; save(); e.currentTarget.setAttribute('aria-checked', String(state.colour)); current && navigate(state.view); } }, h('span', { class: 'knob' }));
   body.replaceChildren(
-    h('h2', {}, 'Agency'),
-    agencyBtn('go', 'GO Transit'), agencyBtn('ttc', 'TTC'),
-    h('button', { class: 'btn wide', type: 'button', disabled: true }, 'Local transit (not connected yet)'),
-    h('h2', {}, 'Display'),
-    h('button', { class: 'btn wide', type: 'button', 'aria-pressed': String(!state.colour), onclick: e => { state.colour = !state.colour; save(); e.currentTarget.setAttribute('aria-pressed', String(!state.colour)); current && navigate(state.view); } }, 'Colour off'),
+    h('h2', {}, 'Menu'),
+    h('p', { class: 'sec' }, 'Agency'),
+    seg,
+    h('button', { class: 'btn wide ghost', type: 'button', disabled: true }, 'Local transit (not connected yet)'),
+    h('p', { class: 'sec' }, 'Display'),
+    h('div', { class: 'switch-row' }, h('span', {}, 'Colour'), sw),
     h('div', { class: 'row' },
       h('button', { class: 'btn', type: 'button', onclick: () => { dlg.close(); pickStation(); } }, 'Choose station'),
       h('a', { class: 'btn', href: 'privacy.html' }, 'Privacy')),
-    h('button', { class: 'btn', type: 'button', onclick: () => dlg.close() }, 'Close'),
+    h('button', { class: 'btn primary wide', type: 'button', onclick: () => dlg.close() }, 'Close'),
     h('p', { class: 'note small' }, 'Unofficial. Not affiliated with the TTC, GO Transit or Metrolinx. Contains information licensed under the Open Government Licence – Ontario.'));
   dlg.showModal();
 }

@@ -22,7 +22,7 @@ export async function openPicker({ title, load, onPick, emptyText }) {
       h('span', {}, i.label), h('span', { class: 'sub' }, i.d != null ? fmtDistance(i.d) : i.sub || '')))));
   };
   input.addEventListener('input', draw);
-  try { items = await load(); } catch { status.textContent = 'Could not load the list. Try again in a moment.'; return; }
+  try { items = await load(); } catch (e) { status.textContent = e?.message === 'not-configured' ? 'Live data is not connected yet. The Worker link is missing, so this list cannot load.' : 'Could not load the list. Try again in a moment.'; return; }
   near.hidden = !items.some(i => i.lat != null);
   near.onclick = async () => {
     try { pos = await getPosition(); near.hidden = true; draw(); }
