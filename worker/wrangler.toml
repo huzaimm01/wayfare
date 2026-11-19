@@ -1,0 +1,14 @@
+name = "wayfare-proxy"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+[vars]
+# Comma separated list of origins allowed to call this Worker. Not a secret.
+# For a GitHub Pages project site the origin is just https://USERNAME.github.io (no repo path).
+ALLOWED_ORIGINS = "https://huzaimm01.github.io"
+
+[observability]
+enabled = false
+
+# The key is a secret, never put it in this file:
+#   npx wrangler secret put METROLINX_API_KEY

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0059B3">
+<meta name="description" content="Next GO, TTC subway, bus and streetcar departures, and when to leave to catch them.">
+<title>Wayfare</title>
+<link rel="icon" type="image/svg+xml" href="assets/wayfare.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Concert+One&display=swap">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div id="screen">
+  <header>
+    <button id="agencyBtn" class="mark-btn" type="button" aria-haspopup="dialog"><span id="mark" class="mark">GO</span></button>
+    <button id="titleBtn" class="title" type="button"><span id="lineName">Wayfare</span></button>
+    <button id="dirBtn" class="dir" type="button" aria-label="Direction"><span id="dirLetter">·</span></button>
+  </header>
+  <main id="view"></main>
+  <nav aria-label="Views">
+    <button type="button" data-view="board">Board</button>
+    <button type="button" data-view="surface">Routes</button>
+    <button type="button" data-view="leave">Leave by</button>
+  </nav>
+</div>
+<dialog id="menu" aria-label="Menu"><div class="sheet" id="menuBody"></div></dialog>
+<dialog id="picker" aria-label="Choose"><div class="sheet" id="pickerBody"></div></dialog>
+<noscript><p style="padding:1rem;font-family:sans-serif">Wayfare needs JavaScript to show live departures.</p></noscript>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
