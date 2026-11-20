@@ -93,7 +93,7 @@ export function mountJourney(ctx) {
   header.titleBtn.onclick = header.dirBtn.onclick = null;
 
   const fromBtn = h('button', { class: 'btn wide', type: 'button' });
-  const toBtn = h('button', { class: 'btn wide', type: 'button' });
+  const toBtn = h('button', { class: 'btn', type: 'button', style: 'flex:1;min-width:0' });
   const swapBtn = h('button', { class: 'btn', type: 'button', 'aria-label': 'Swap origin and destination' }, 'Swap');
   const timeInput = h('input', { class: 'field', type: 'time', value: arriveBy, 'aria-label': 'Arrive by' });
   const results = h('div', {});

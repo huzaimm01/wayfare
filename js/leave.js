@@ -20,15 +20,22 @@ export function mountLeave(ctx) {
   setText(header.dir, t.dir || '·');
 
   let deps = [], err = null, walk = null, locNote = '', walkAuto = false;
-  const walkIn = h('input', { class: 'field small', type: 'number', min: '0', max: '120', inputmode: 'numeric', 'aria-label': 'Walking minutes', oninput: () => { walk = walkIn.value === '' ? null : Math.max(0, Number(walkIn.value)); walkAuto = false; draw(); } });
-  const spareIn = h('input', { class: 'field small', type: 'number', min: '0', max: '30', value: '2', inputmode: 'numeric', 'aria-label': 'Spare minutes', oninput: draw });
-  const noteEl = h('p', { class: 'note small' });
+  const walkIn = h('input', { class: 'field', type: 'number', min: '0', max: '120', inputmode: 'numeric', 'aria-label': 'Walking minutes', oninput: () => { walk = walkIn.value === '' ? null : Math.max(0, Number(walkIn.value)); walkAuto = false; draw(); } });
+  const spareIn = h('input', { class: 'field', type: 'number', min: '0', max: '30', value: '2', inputmode: 'numeric', 'aria-label': 'Spare minutes', oninput: draw });
+  const noteEl = h('p', { class: 'note small left' });
   const list = h('ul', { class: 'list leave' });
-  const locBtn = h('button', { class: 'btn', type: 'button', onclick: useLocation }, 'Use my location');
+  const locBtn = h('button', { class: 'btn wide', type: 'button', onclick: useLocation }, 'Use my location');
+  const sub = [t.line, t.dir ? t.dir + 'bound' : null].filter(Boolean).join(' · ');
   root.replaceChildren(
-    h('p', { class: 'stopname' }, t.name),
-    h('div', { class: 'row' }, h('label', { class: 'lab' }, 'Walk (min)', walkIn), h('label', { class: 'lab' }, 'Spare (min)', spareIn)),
-    h('div', { class: 'row' }, locBtn), noteEl, list);
+    h('div', { class: 'leave-head' },
+      h('p', { class: 'stopname' }, t.name),
+      sub ? h('p', { class: 'sub' }, sub) : null),
+    h('div', { class: 'card' },
+      h('div', { class: 'row two' },
+        h('label', { class: 'lab' }, 'Walk (min)', walkIn),
+        h('label', { class: 'lab' }, 'Spare (min)', spareIn)),
+      locBtn),
+    noteEl, list);
 
   async function useLocation() {
     if (t.lat == null) { locNote = 'This stop has no coordinates in the feed. Enter your walking time instead.'; return draw(); }
@@ -40,8 +47,24 @@ export function mountLeave(ctx) {
   function draw() {
     const now = Date.now(), spare = Number(spareIn.value) || 0;
     const rows = deps.filter(d => matches(t, d) && d.ts > now - 30000).sort((a, b) => a.ts - b.ts);
-    noteEl.textContent = err ? errorText(err) : locNote || (walk == null ? 'Enter how long it takes you to walk there, or use your location.' : '');
-    if (!rows.length) { list.replaceChildren(h('li', {}, h('p', { class: 'note' }, err ? '' : 'No departures listed right now.'))); return; }
+    noteEl.textContent = err ? '' : locNote || (walk == null ? 'Enter how long it takes you to walk there, or use your location.' : '');
+    if (!rows.length) {
+      // A designed empty state, not a bare line: the view should never look
+      // like a blank screen with one centred sentence.
+      const empty = err
+        ? h('div', { class: 'empty-state' },
+          h('p', { class: 'empty-ico', 'aria-hidden': 'true' }, '◷'),
+          h('p', { class: 'lead' }, errorText(err)),
+          h('p', { class: 'sub' }, 'Departures will show here when the data source answers.'),
+          h('button', { class: 'btn', type: 'button', onclick: load }, 'Try again'))
+        : h('div', { class: 'empty-state' },
+          h('p', { class: 'empty-ico', 'aria-hidden': 'true' }, '◷'),
+          h('p', { class: 'lead' }, 'No departures listed right now.'),
+          h('p', { class: 'sub' }, 'Check back in a bit, or pick another station.'),
+          h('button', { class: 'btn', type: 'button', onclick: () => ctx.navigate('board') }, 'Back to the board'));
+      list.replaceChildren(h('li', {}, empty));
+      return;
+    }
     list.replaceChildren(...rows.map(d => {
       const board = fmtClock(d.ts), mins = Math.max(0, minsUntil(d.ts, now));
       if (walk == null) return h('li', {}, h('div', { class: 'leaverow' }, h('span', { class: 'when' }, board), h('span', { class: 'sub' }, `in ${mins} min`)));

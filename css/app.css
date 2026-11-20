@@ -33,7 +33,16 @@ main.top{align-items:stretch;gap:12px}
 .unit{display:block;margin-top:.1em;font-size:clamp(1.1rem,4vw,1.7rem);color:var(--dim)}
 .clock{margin:.8rem 0 0;font-size:clamp(1.2rem,4.2vw,1.8rem)}
 .next{margin:.45rem 0 0;font-size:clamp(1.05rem,3.6vw,1.5rem);color:var(--dim)}
-.where{margin:1.1rem 0 0;font-family:var(--ui);font-size:1rem;color:var(--dim);text-decoration:underline dotted;text-underline-offset:4px}
+.where{margin:1.1rem 0 0;font-family:var(--ui);font-size:1rem;color:var(--fg);background:color-mix(in srgb,var(--fg) 8%,transparent);border:1px solid color-mix(in srgb,var(--fg) 20%,transparent);border-radius:999px;padding:9px 16px}
+.where::after{content:"›";margin-left:8px;opacity:.7}
+.deps{list-style:none;margin:18px 0 0;padding:0;width:100%;max-width:28rem;font-family:var(--ui);text-align:left}
+.deps li+li{border-top:1px solid color-mix(in srgb,currentColor 22%,transparent)}
+.deps button{display:flex;align-items:baseline;gap:10px;width:100%;padding:13px 4px;text-align:left;font-size:1rem}
+.deps button[aria-current=true] .dep-time{text-decoration:underline;text-underline-offset:4px}
+.dep-time{font-weight:700}
+.dep-dest{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dim)}
+.dep-mins{font-weight:700;white-space:nowrap}
+.deps .chev{color:var(--dim)}
 .note{margin:.9rem 0 0;font-family:var(--ui);font-size:.95rem;color:var(--dim);text-align:center}
 .note.small,.small{font-size:.85rem}
 .empty{text-align:center;display:grid;gap:18px;justify-items:center}
@@ -59,10 +68,22 @@ nav button[aria-current=page]{color:var(--fg);border-bottom-color:currentColor;o
 .list button{display:flex;justify-content:space-between;gap:12px;width:100%;padding:14px 4px;text-align:left;font-size:1.05rem}
 .list button[aria-current=true]{font-weight:700;text-decoration:underline;text-underline-offset:4px}
 .sub{color:var(--dim);font-size:.9rem}
+main .sec{margin:0;font:700 .8rem var(--ui);letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
 .panel{text-align:center;padding:4px 0 8px}
 .stopname{margin:0 0 .3rem;font-size:1.3rem}
+.leave-head{margin-bottom:4px}
+.leave-head .stopname{margin-bottom:2px}
+.leave-head .sub{margin:0;font-family:var(--ui)}
+.note.left{text-align:left}
+.card{background:color-mix(in srgb,var(--fg) 8%,transparent);border:1px solid color-mix(in srgb,var(--fg) 16%,transparent);border-radius:18px;padding:14px;display:grid;gap:12px}
+.row.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.empty-state{display:grid;gap:10px;justify-items:center;text-align:center;padding:28px 16px}
+.empty-state .lead{margin:0;font-size:1.15rem}
+.empty-state .sub{margin:0}
+.empty-ico{margin:0;font-size:2.2rem;color:var(--dim)}
 .big{margin:0;font-size:clamp(3rem,14vw,5rem);line-height:1}
-.leaverow{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:14px 4px}
+.leaverow{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:14px 4px}
+.leaverow .sub{white-space:normal}
 .when{font-family:var(--display);font-size:clamp(1.5rem,6vw,2.2rem)}
 .missed{opacity:.75}
 .missed .when{text-decoration:line-through}
@@ -71,8 +92,9 @@ dialog{position:fixed;left:0;right:0;bottom:0;top:auto;width:min(100vw,30rem);ma
 @media (min-width:641px) and (hover:hover) and (pointer:fine){dialog{top:0;bottom:0;margin:auto;width:min(30rem,92vw);max-height:80dvh;border-bottom:1px solid color-mix(in srgb,var(--sheet-fg) 16%,transparent);border-radius:36px}}
 .drag{position:absolute;top:0;left:0;right:0;height:64px;touch-action:none;cursor:grab;z-index:2}
 dialog[open]{animation:sheet-in .45s cubic-bezier(.2,.9,.25,1.08)}
-dialog::backdrop{background:rgba(0,0,0,.55)}
+dialog::backdrop{background:rgba(0,0,0,.55);transition:opacity .26s ease}
 dialog[open]::backdrop{animation:fade-in .3s ease}
+dialog.closing::backdrop{opacity:0}
 @keyframes sheet-in{from{transform:translateY(64px);opacity:0}}
 @keyframes fade-in{from{opacity:0}}
 @media (prefers-reduced-motion:reduce){dialog[open],dialog[open]::backdrop{animation:none}}

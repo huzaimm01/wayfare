@@ -75,6 +75,8 @@ export function mountGoMap(ctx) {
   let X = () => 0, Y = () => 0;
   let cam = { x: 0, y: 0, w: W };
   let animId = 0, depTimer = 0, depTick = 0;
+  let flingId = 0, lastHitR = -1;
+  let moveHist = [];
   let deps = [], depErr = null;
   let svg = null, trackEls = [], stationEls = new Map();
   const pointers = new Map();
@@ -87,6 +89,10 @@ export function mountGoMap(ctx) {
   const drop = h('div', { class: 'map-drop', hidden: true });
   searchWrap.append(h('div', { class: 'map-search' }, h('span', { class: 'mag', 'aria-hidden': 'true' }, '⌕'), input, clr), drop);
   const pills = h('div', { class: 'map-pills' });
+  // Fade the right edge so a pill cut off by the scroll reads as intentional
+  // scrolling instead of a broken clip.
+  pills.style.maskImage = 'linear-gradient(to right, #000 0, #000 calc(100% - 30px), transparent 100%)';
+  pills.style.webkitMaskImage = 'linear-gradient(to right, #000 0, #000 calc(100% - 30px), transparent 100%)';
   const top = h('div', { class: 'map-top' }, searchWrap, pills);
   const zoomBox = h('div', { class: 'map-zoom' },
     h('button', { type: 'button', 'aria-label': 'Zoom in', onclick: () => zoomAt(0.7, cam.x + cam.w / 2, cam.y + (cam.w * H / W) / 2) }, '+'),
@@ -121,9 +127,11 @@ export function mountGoMap(ctx) {
 
   // ---- filter pills ----
   function paintPills() {
+    let activeBtn = null;
     for (const b of pills.children) {
       const id = b.dataset.line, on = id === filter;
       b.setAttribute('aria-pressed', String(on));
+      if (on) activeBtn = b;
       if (on && id !== 'ALL') {
         b.style.background = GO_LINES[id].color; b.style.color = '#fff';
         if (b._dot) b._dot.style.background = '#fff';
@@ -132,6 +140,8 @@ export function mountGoMap(ctx) {
         if (b._dot) b._dot.style.background = GO_LINES[id].color;
       }
     }
+    // Keep the active pill fully in view instead of clipped off the edge.
+    if (activeBtn) activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
   }
   function buildPills() {
     const mk = id => {
@@ -152,7 +162,7 @@ export function mountGoMap(ctx) {
     paintPills();
     applyHighlight();
     updateLabels();
-    if (id === 'ALL') animateCameraTo(0, 0, W, 700);
+    if (id === 'ALL') animateCameraTo(0, 0, W, 550);
     else fitLine(id);
   }
   function resetView() { closeDrawer(); setFilter('ALL'); }
@@ -190,14 +200,61 @@ export function mountGoMap(ctx) {
   document.addEventListener('click', closeDrop);
 
   // ---- camera ----
-  function applyVb() { if (svg) svg.setAttribute('viewBox', `${cam.x} ${cam.y} ${cam.w} ${cam.w * H / W}`); }
+  // Keep the tap target about 19 CSS px on screen at any zoom; the visible
+  // station dot stays the same size. Only rewrites when the radius moved.
+  function updateHitRadii() {
+    if (!svg) return;
+    const w = svg.getBoundingClientRect().width;
+    if (!w) return;
+    const r = 19 * cam.w / w;
+    if (Math.abs(r - lastHitR) < 0.5) return;
+    lastHitR = r;
+    for (const el of stationEls.values()) el.hit.setAttribute('r', r.toFixed(1));
+  }
+  function applyVb() {
+    if (!svg) return;
+    svg.setAttribute('viewBox', `${cam.x} ${cam.y} ${cam.w} ${cam.w * H / W}`);
+    updateHitRadii();
+  }
   function clampCam() {
     cam.w = clamp(cam.w, 140, W);
     cam.x = clamp(cam.x, 0, W - cam.w);
     cam.y = clamp(cam.y, 0, H - (cam.w * H / W));
   }
-  function cancelAnim() { if (animId) { cancelAnimationFrame(animId); animId = 0; } }
-  function animateCameraTo(tx, ty, tw, dur = 700) {
+  function cancelAnim() {
+    if (animId) { cancelAnimationFrame(animId); animId = 0; }
+    if (flingId) { cancelAnimationFrame(flingId); flingId = 0; }
+  }
+  // Momentum after a drag: keep the camera gliding and ease it to a stop.
+  // vx/vy are camera velocity in SVG units per ms.
+  function startFling(vx, vy) {
+    cancelAnim();
+    const speed = Math.hypot(vx, vy);
+    if (speed < 0.05) return;
+    const cap = 4, k = Math.min(1, cap / speed);
+    vx *= k; vy *= k;
+    let last = performance.now();
+    const step = now => {
+      const dt = Math.min(now - last, 50);
+      last = now;
+      cam.x += vx * dt;
+      cam.y += vy * dt;
+      const f = Math.pow(0.90, dt / 16.7);
+      vx *= f; vy *= f;
+      clampCam();
+      applyVb();
+      // Pin the velocity component that is pushing into a bound, so the
+      // other axis can keep gliding.
+      if (cam.x === 0 && vx < 0) vx = 0;
+      if (cam.x === W - cam.w && vx > 0) vx = 0;
+      if (cam.y === 0 && vy < 0) vy = 0;
+      if (cam.y === H - (cam.w * H / W) && vy > 0) vy = 0;
+      if (Math.hypot(vx, vy) < 0.02) { flingId = 0; return; }
+      flingId = requestAnimationFrame(step);
+    };
+    flingId = requestAnimationFrame(step);
+  }
+  function animateCameraTo(tx, ty, tw, dur = 550) {
     cancelAnim();
     const sx = cam.x, sy = cam.y, sw = cam.w, t0 = performance.now();
     const step = now => {
@@ -233,7 +290,7 @@ export function mountGoMap(ctx) {
     const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
     const w = clamp(Math.max(maxX - minX, (maxY - minY) * W / H) * 1.18, 140, W);
     const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
-    animateCameraTo(clamp(cx - w / 2, 0, W - w), clamp(cy - (w * H / W) / 2, 0, H - (w * H / W)), w, 760);
+    animateCameraTo(clamp(cx - w / 2, 0, W - w), clamp(cy - (w * H / W) / 2, 0, H - (w * H / W)), w, 550);
   }
   function focusStation(st) {
     const sx = X(st.lng), sy = Y(st.lat);
@@ -243,7 +300,7 @@ export function mountGoMap(ctx) {
     const desktop = window.matchMedia('(min-width:641px) and (hover:hover) and (pointer:fine)').matches;
     const cx = desktop ? sx + 190 / s : sx;
     const cy = desktop ? sy : sy + (0.18 * r.height) / s;
-    animateCameraTo(clamp(cx - tw / 2, 0, W - tw), clamp(cy - (tw * H / W) / 2, 0, H - (tw * H / W)), tw, 820);
+    animateCameraTo(clamp(cx - tw / 2, 0, W - tw), clamp(cy - (tw * H / W) / 2, 0, H - (tw * H / W)), tw, 500);
   }
 
   // ---- labels ----
@@ -260,8 +317,12 @@ export function mountGoMap(ctx) {
       if (!el) continue;
       // At the full-network zoom only Union and the termini are labelled, so
       // the Toronto cluster stays readable. Hub labels appear when you zoom
-      // in, and a filtered line labels all its own stations.
-      const show = st.code === 'UN' || st.terminus || (filter !== 'ALL' && st.lines.includes(filter)) || cam.w < 420;
+      // in, and a filtered line labels all its own stations. Pearson is a UP
+      // terminus, so it would be labelled at full zoom and collide with
+      // Union Station: hide UP-only termini until zoomed in or the UP line
+      // is filtered. Union always stays.
+      const upTerminus = st.code !== 'UN' && st.terminus && st.lines.length === 1 && st.lines[0] === 'UP';
+      const show = st.code === 'UN' || (st.terminus && !upTerminus) || (filter !== 'ALL' && st.lines.includes(filter)) || cam.w < 420;
       el.label.style.display = show ? '' : 'none';
     }
   }
@@ -283,22 +344,50 @@ export function mountGoMap(ctx) {
     }
   }
 
-  // ---- lake, from the real Lakeshore track shapes ----
+  // ---- lake, from the real Lakeshore stations ----
   function lakePath() {
     if (!lines || !byCode['UN']) return '';
     const un = byCode['UN'];
+    // The Lakeshore track shapes jitter and dip inland around Hamilton
+    // (Confederation station sits well south of the shore), which made a
+    // binned/smoothed shoreline zigzag. The stations sit on the shore, so
+    // build the shoreline from them: a median filter drops the inland
+    // outlier, a moving average keeps it smooth.
     const pts = [];
-    for (const [la, lo] of lines['LW'].shape) if (lo < un.lng - 0.01) pts.push([la, lo]);
-    for (const [la, lo] of lines['LE'].shape) if (lo > un.lng + 0.01) pts.push([la, lo]);
+    for (const s of lines['LW'].stations) if (s.lng < un.lng - 0.01) pts.push([s.lat, s.lng]);
+    for (const s of lines['LE'].stations) if (s.lng > un.lng + 0.01) pts.push([s.lat, s.lng]);
     pts.sort((a, b) => a[1] - b[1]);
     if (pts.length < 2) return '';
-    const xy = pts.map(([la, lo]) => [X(lo), Y(la) + 46]);
-    return `M ${xy[0][0].toFixed(1)},${xy[0][1].toFixed(1)} L ${xy.map(p => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' L ')} L ${W},${xy[xy.length - 1][1].toFixed(1)} L ${W},${H} L ${xy[0][0].toFixed(1)},${H} Z`;
+    const shore = pts.map(([la, lo]) => [X(lo), Y(la) + 46]);
+    const med = shore.map((p, i) => {
+      const ys = [];
+      for (let j = Math.max(0, i - 2); j <= Math.min(shore.length - 1, i + 2); j++) ys.push(shore[j][1]);
+      ys.sort((a, b) => a - b);
+      return [p[0], ys[Math.floor(ys.length / 2)]];
+    });
+    const sm = med.map((p, i) => {
+      let sx = 0, sy = 0, n = 0;
+      for (let j = Math.max(0, i - 1); j <= Math.min(med.length - 1, i + 1); j++) { sx += med[j][0]; sy += med[j][1]; n++; }
+      return [sx / n, sy / n];
+    });
+    // Smooth curve through the shoreline points (Catmull-Rom to Bezier),
+    // then straight down the right edge and along the bottom.
+    const d = [`M ${sm[0][0].toFixed(1)},${sm[0][1].toFixed(1)}`];
+    for (let i = 0; i < sm.length - 1; i++) {
+      const p0 = sm[Math.max(0, i - 1)], p1 = sm[i], p2 = sm[i + 1], p3 = sm[Math.min(sm.length - 1, i + 2)];
+      const c1x = p1[0] + (p2[0] - p0[0]) / 6, c1y = p1[1] + (p2[1] - p0[1]) / 6;
+      const c2x = p2[0] - (p3[0] - p1[0]) / 6, c2y = p2[1] - (p3[1] - p1[1]) / 6;
+      d.push(`C ${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`);
+    }
+    const last = sm[sm.length - 1], first = sm[0];
+    d.push(`L ${W},${last[1].toFixed(1)} L ${W},${H} L ${first[0].toFixed(1)},${H} Z`);
+    return d.join(' ');
   }
 
   // ---- render ----
   function renderSvg() {
     if (!lines) return;
+    lastHitR = -1;
     const t = theme;
     const old = svg;
     svg = svgEl('svg', { class: 'map-canvas', role: 'img', 'aria-label': 'GO train network map' });
@@ -318,7 +407,7 @@ export function mountGoMap(ctx) {
     const vp = svgEl('g', {});
     vp.append(svgEl('rect', { x: -1500, y: -1500, width: 5000, height: 4500, fill: 'url(#map-grid-major)' }));
     const lake = lakePath();
-    if (lake) vp.append(svgEl('path', { d: lake, fill: t.water, stroke: t.waterStroke, 'stroke-width': 1.5 }));
+    if (lake) vp.append(svgEl('path', { d: lake, fill: t.water, stroke: t.waterStroke, 'stroke-width': 1.5, 'stroke-linejoin': 'round' }));
     const tracks = svgEl('g', {});
     trackEls = [];
     for (const id of LINE_ORDER) {
@@ -338,9 +427,9 @@ export function mountGoMap(ctx) {
     for (const st of stations) {
       const x = X(st.lng), y = Y(st.lat);
       const primary = lines[st.lines[0]];
+      const hit = svgEl('circle', { cx: x, cy: y, r: 17, fill: 'transparent' });
       const g = svgEl('g', { class: 'map-stn', 'data-station': st.code },
-        svgEl('title', {}, st.name),
-        svgEl('circle', { cx: x, cy: y, r: 17, fill: 'transparent' }));
+        svgEl('title', {}, st.name), hit);
       if (st.code === 'UN') {
         g.append(
           svgEl('circle', { cx: x, cy: y, r: 22, fill: '#FBBF24', opacity: 0.24 }),
@@ -365,7 +454,7 @@ export function mountGoMap(ctx) {
       const label = svgEl('text', { class: 'map-label' + (st.hub ? ' hub' : ''), x: lx, y: ly, 'text-anchor': anchor, 'font-size': st.code === 'UN' ? 14.5 : st.hub ? 11.2 : 9.8, fill: t.text, stroke: t.canvas, 'stroke-width': 3.5 }, st.name);
       g.append(label);
       stns.append(g);
-      stationEls.set(st.code, { g, label, lines: st.lines });
+      stationEls.set(st.code, { g, label, lines: st.lines, hit });
     }
     vp.append(stns);
     vp.append(svgEl('rect', { x: 0, y: 0, width: W, height: H, fill: 'url(#map-vig)', 'pointer-events': 'none' }));
@@ -373,6 +462,7 @@ export function mountGoMap(ctx) {
     svg._radar = radar;
     if (old) old.remove();
     full.prepend(svg);
+    updateHitRadii();
     attachPointerHandlers();
     applyHighlight();
     renderRadar();
@@ -395,6 +485,7 @@ export function mountGoMap(ctx) {
   function attachPointerHandlers() {
     svg.addEventListener('pointerdown', e => {
       cancelAnim();
+      moveHist = [{ t: performance.now(), x: e.clientX, y: e.clientY }];
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       try { svg.setPointerCapture(e.pointerId); } catch {}
       if (pointers.size === 1) dragStart = { x: e.clientX, y: e.clientY, cam: { ...cam }, moved: false };
@@ -414,6 +505,8 @@ export function mountGoMap(ctx) {
         cam.x = clamp(dragStart.cam.x - dx, 0, W - cam.w);
         cam.y = clamp(dragStart.cam.y - dy, 0, H - (cam.w * H / W));
         applyVb();
+        moveHist.push({ t: performance.now(), x: e.clientX, y: e.clientY });
+        if (moveHist.length > 8) moveHist.shift();
       } else if (pointers.size === 2 && pinchStart) {
         const [a, b] = [...pointers.values()];
         const dist = Math.hypot(b.x - a.x, b.y - a.y);
@@ -433,13 +526,38 @@ export function mountGoMap(ctx) {
     // click to the svg, so a click handler on the station group never fires.
     const endPointer = e => {
       const wasTap = dragStart && !dragStart.moved && pointers.size === 1;
+      const wasDrag = dragStart && dragStart.moved;
       pointers.delete(e.pointerId);
       if (pointers.size < 2) pinchStart = null;
       if (pointers.size === 0) dragStart = null;
       if (wasTap) {
         const g = document.elementFromPoint(e.clientX, e.clientY)?.closest('g.map-stn');
-        const code = g?.dataset.station;
-        if (code && byCode[code]) selectStation(byCode[code]);
+        if (g) {
+          // The hit circles are ~19px on screen, so in the Union cluster
+          // they overlap and the topmost group is not always the one the
+          // finger meant. Pick the station nearest the tap instead, as
+          // long as it is inside the current hit radius.
+          const p = clientToSvg(e.clientX, e.clientY);
+          let best = null, bd = Infinity;
+          for (const st of stations) {
+            const d = Math.hypot(X(st.lng) - p.x, Y(st.lat) - p.y);
+            if (d < bd) { bd = d; best = st; }
+          }
+          if (best && bd <= lastHitR) selectStation(best);
+        }
+      } else if (wasDrag && pointers.size === 0) {
+        // Fling from the last ~120ms of pointer movement; the camera moves
+        // opposite the pointer, so the velocity is negated.
+        const now = performance.now();
+        const recent = moveHist.filter(p => now - p.t <= 120);
+        if (recent.length >= 2) {
+          const a = recent[0], b = recent[recent.length - 1];
+          const dt = b.t - a.t;
+          if (dt > 0) {
+            const k = cam.w / svg.getBoundingClientRect().width;
+            startFling(-(b.x - a.x) / dt * k, -(b.y - a.y) / dt * k);
+          }
+        }
       }
     };
     svg.addEventListener('pointerup', endPointer);

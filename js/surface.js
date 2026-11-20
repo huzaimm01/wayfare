@@ -4,12 +4,25 @@ import { getPosition, haversine, fmtDistance } from './geo.js';
 import { REFRESH_MS, TTC_SURFACE_COLOR } from './config.js';
 import { errorText } from './board.js';
 import { mountGoMap } from './go-map.js';
+import { mountTtcMap } from './ttc-map.js';
 
 const DIRWORD = { N: 'northbound', E: 'eastbound', S: 'southbound', W: 'westbound' };
 const letter = d => { const m = /^(north|south|east|west)/i.exec(d?.name || ''); return m ? m[1][0].toUpperCase() : null; };
 
 export function mountSurface(ctx) {
   if (ctx.state.agency === 'go') return mountGoMap(ctx);
+  // TTC: the subway map is the Routes view; the bus/streetcar picker is
+  // one tap away on the map's "Bus & streetcar" button.
+  let sub = null;
+  const showBus = () => {
+    if (sub) { sub.unmount(); sub = null; }
+    sub = mountBusPicker(ctx);
+  };
+  sub = mountTtcMap(ctx, showBus);
+  return { unmount() { sub && sub.unmount(); } };
+}
+
+function mountBusPicker(ctx) {
   const { state, root, header, save } = ctx;
   const s = state.surface;
   let routes = null, cfg = null, preds = [], err = null, timer = 0, stopButtons = new Map(), panel = null;

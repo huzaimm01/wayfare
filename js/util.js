@@ -47,19 +47,22 @@ export function attachSheet(dlg) {
   const handle = document.createElement('div');
   handle.className = 'drag'; handle.setAttribute('aria-hidden', 'true');
   dlg.prepend(handle);
-  const finish = () => { dlg.style.transform = ''; dlg.style.opacity = ''; dlg.style.transition = ''; dlg.style.animation = ''; };
+  const finish = () => { dlg.style.transform = ''; dlg.style.opacity = ''; dlg.style.transition = ''; dlg.style.animation = ''; dlg.classList.remove('closing'); };
   dlg.addEventListener('close', finish);
   // Every way out of a sheet uses this: swipe, backdrop, Esc, and any button
   // inside it, so a tap on a menu item slides the sheet away instead of it
-  // vanishing. `after` runs once the dialog has actually closed.
+  // vanishing. `after` runs once the dialog has actually closed. The close
+  // is deliberately slow enough to read (.26s) and the backdrop fades with
+  // it (via the .closing class in app.css), so the sheet does not just pop.
   let closing = false;
   const closeSheet = (after) => {
     if (!dlg.open || closing) return;
     if (reduce) { dlg.close(); after && after(); return; }
     closing = true;
-    dlg.style.transition = 'transform .18s ease, opacity .18s ease';
+    dlg.classList.add('closing');
+    dlg.style.transition = 'transform .26s cubic-bezier(.2,.9,.25,1.1), opacity .26s ease';
     dlg.style.transform = 'translateY(110%)'; dlg.style.opacity = '0';
-    setTimeout(() => { closing = false; if (dlg.open) dlg.close(); after && after(); }, 180);
+    setTimeout(() => { closing = false; dlg.classList.remove('closing'); if (dlg.open) dlg.close(); after && after(); }, 260);
   };
   dlg.closeSheet = closeSheet;
   dlg.addEventListener('click', e => { if (e.target === dlg) closeSheet(); });

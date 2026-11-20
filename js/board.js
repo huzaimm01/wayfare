@@ -38,11 +38,12 @@ export function mountBoard(ctx) {
   // TTC opens the picker. (The title button switches GO lines instead,
   // so it cannot do this job.)
   const where = h('button', { class: 'where', type: 'button', onclick: () => ctx.pickStation(), 'aria-label': 'Change station' });
+  const depsList = h('ul', { class: 'deps' });
   const note = h('p', { class: 'note' });
   const sr = h('p', { class: 'sr', 'aria-live': 'polite' });
   const board = h('div', { class: 'board' },
     h('div', { class: 'radar', 'aria-hidden': 'true' }, h('div', { class: 'timebox' }, num, unit)),
-    clock, next, where, note, sr);
+    clock, next, where, depsList, note, sr);
   const lead = h('p', { class: 'lead' });
   const empty = h('div', { class: 'empty' }, lead,
     h('button', { class: 'btn', type: 'button', onclick: () => ctx.pickStation() }, 'Choose a station'));
@@ -94,10 +95,21 @@ export function mountBoard(ctx) {
       const srText = `${meta.name}${c.dir ? ' ' + DIRWORD[c.dir] : ''} at ${station().name}, ${m <= 0 ? 'now' : m + ' minutes'}`;
       if (srText !== lastSr) { lastSr = srText; sr.textContent = srText; }
     } else {
-      setText(num, '·'); setText(unit, '');
-      setText(clock, !loaded ? 'Loading' : err ? '' : 'No departures listed right now');
+      setText(num, !loaded ? '…' : '·'); setText(unit, '');
+      setText(clock, !loaded ? 'Loading departures' : err ? '' : 'No departures listed right now');
       setText(next, '');
     }
+    // The next few departures, as real buttons: the board should read as
+    // something you can tap, not a poster. Tapping one opens Leave by, so
+    // you can see when to head out for that departure.
+    depsList.replaceChildren(...c.list.slice(0, 5).map((d, i) => {
+      const m = minsUntil(d.ts, c.now);
+      return h('li', {}, h('button', { type: 'button', 'aria-current': String(i === 0), onclick: () => ctx.navigate('leave') },
+        h('span', { class: 'dep-time' }, fmtClock(d.ts)),
+        h('span', { class: 'dep-dest' }, d.dest || d.lineName || ''),
+        h('span', { class: 'dep-mins' }, m <= 0 ? 'Now' : m + ' min'),
+        h('span', { class: 'chev', 'aria-hidden': 'true' }, '›')));
+    }));
     setText(note, err ? `${errorText(err)}${updated ? ` Showing the update from ${fmtClock(updated)}.` : ''}` : '');
 
     const t = { ...target(), line: c.line, dir: c.dir, color: meta.color };
