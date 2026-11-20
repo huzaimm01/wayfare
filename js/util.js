@@ -49,13 +49,21 @@ export function attachSheet(dlg) {
   dlg.prepend(handle);
   const finish = () => { dlg.style.transform = ''; dlg.style.opacity = ''; dlg.style.transition = ''; dlg.style.animation = ''; };
   dlg.addEventListener('close', finish);
-  const closeSheet = () => {
-    if (reduce || !dlg.open) { dlg.close(); return; }
+  // Every way out of a sheet uses this: swipe, backdrop, Esc, and any button
+  // inside it, so a tap on a menu item slides the sheet away instead of it
+  // vanishing. `after` runs once the dialog has actually closed.
+  let closing = false;
+  const closeSheet = (after) => {
+    if (!dlg.open || closing) return;
+    if (reduce) { dlg.close(); after && after(); return; }
+    closing = true;
     dlg.style.transition = 'transform .18s ease, opacity .18s ease';
     dlg.style.transform = 'translateY(110%)'; dlg.style.opacity = '0';
-    setTimeout(() => dlg.close(), 180);
+    setTimeout(() => { closing = false; if (dlg.open) dlg.close(); after && after(); }, 180);
   };
+  dlg.closeSheet = closeSheet;
   dlg.addEventListener('click', e => { if (e.target === dlg) closeSheet(); });
+  dlg.addEventListener('cancel', e => { e.preventDefault(); closeSheet(); });
   let startY = null, dy = 0, tracking = false;
   handle.addEventListener('pointerdown', e => {
     tracking = true; startY = e.clientY; dy = 0;

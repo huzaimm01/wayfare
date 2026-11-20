@@ -4,6 +4,7 @@ import { AGENCIES, LOGOS } from './config.js';
 import { mountBoard } from './board.js';
 import { mountSurface } from './surface.js';
 import { mountLeave } from './leave.js';
+import { mountJourney } from './journey.js';
 import { openPicker } from './picker.js';
 import * as api from './api.js';
 
@@ -12,7 +13,7 @@ const root = $('#view');
 const header = { mark: $('#mark'), title: $('#lineName'), dir: $('#dirLetter'), dirBtn: $('#dirBtn'), titleBtn: $('#titleBtn') };
 const save = () => saveState(state);
 let subway = null; // station data built by tools/build-subway.mjs
-const views = { board: mountBoard, surface: mountSurface, leave: mountLeave };
+const views = { board: mountBoard, surface: mountSurface, leave: mountLeave, journey: mountJourney };
 let current = null;
 
 // The bars use Apple's neutral glass, so the logo reverses with the OS appearance:
@@ -55,18 +56,8 @@ async function loadSubway() {
 }
 
 async function pickStation() {
-  if (state.agency === 'go') {
-    return openPicker({
-      title: 'GO station or stop',
-      emptyText: 'No station matches that.',
-      load: async () => {
-        const { stops } = await api.goStops();
-        const trains = stops.filter(s => /train|station|rail/i.test(s.type));
-        return (trains.length ? trains : stops).map(s => ({ id: s.code, label: s.name, sub: s.type, lat: s.lat, lng: s.lng }));
-      },
-      onPick: i => { state.go = { stop: { code: i.id, name: i.label, lat: i.lat, lng: i.lng }, line: null, dir: null }; save(); navigate('board'); }
-    });
-  }
+  // GO stations are picked on the service map, not from a list.
+  if (state.agency === 'go') { navigate('surface'); return; }
   const data = await loadSubway();
   openPicker({
     title: 'Subway station',
@@ -80,7 +71,7 @@ async function pickStation() {
 function openMenu() {
   const dlg = $('#menu'), body = $('#menuBody');
   const segInd = h('span', { class: 'seg-ind' });
-  const segBtn = (key, label) => h('button', { type: 'button', 'aria-pressed': String(state.agency === key), onclick: () => { state.agency = key; save(); dlg.close(); navigate('board'); } }, label);
+  const segBtn = (key, label) => h('button', { type: 'button', 'aria-pressed': String(state.agency === key), onclick: () => { state.agency = key; save(); dlg.closeSheet(); navigate('board'); } }, label);
   const seg = h('div', { class: 'seg' }, segInd, segBtn('go', 'GO Transit'), segBtn('ttc', 'TTC'));
   segInd.style.transform = state.agency === 'ttc' ? 'translateX(100%)' : 'translateX(0)';
   const sw = h('button', { class: 'switch', type: 'button', role: 'switch', 'aria-checked': String(state.colour), 'aria-label': 'Colour', onclick: e => { state.colour = !state.colour; save(); e.currentTarget.setAttribute('aria-checked', String(state.colour)); current && navigate(state.view); } }, h('span', { class: 'knob' }));
@@ -92,9 +83,9 @@ function openMenu() {
     h('p', { class: 'sec' }, 'Display'),
     h('div', { class: 'switch-row' }, h('span', {}, 'Colour'), sw),
     h('div', { class: 'row' },
-      h('button', { class: 'btn', type: 'button', onclick: () => { dlg.close(); pickStation(); } }, 'Choose station'),
+      h('button', { class: 'btn', type: 'button', onclick: () => dlg.closeSheet(() => pickStation()) }, 'Choose station'),
       h('a', { class: 'btn', href: 'privacy.html' }, 'Privacy')),
-    h('button', { class: 'btn primary wide close-btn', type: 'button', onclick: () => dlg.close() }, 'Close'),
+    h('button', { class: 'btn primary wide close-btn', type: 'button', onclick: () => dlg.closeSheet() }, 'Close'),
     h('p', { class: 'note small' }, 'Unofficial. Not affiliated with the TTC, GO Transit or Metrolinx. Contains information licensed under the Open Government Licence – Ontario.'));
   dlg.showModal();
 }
@@ -103,8 +94,5 @@ const ctx = { state, root, header, save, setPalette, navigate, pickStation, subw
 attachSheet($('#menu')); attachSheet($('#picker'));
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => drawMark());
 $('#agencyBtn').addEventListener('click', openMenu);
-document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => {
-  if (b.dataset.view === 'surface' && state.agency !== 'ttc') { state.agency = 'ttc'; save(); }
-  navigate(b.dataset.view);
-}));
+document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => navigate(b.dataset.view)));
 loadSubway().finally(() => navigate(state.view));

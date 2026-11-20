@@ -3,11 +3,13 @@ import * as api from './api.js';
 import { getPosition, haversine, fmtDistance } from './geo.js';
 import { REFRESH_MS, TTC_SURFACE_COLOR } from './config.js';
 import { errorText } from './board.js';
+import { mountGoMap } from './go-map.js';
 
 const DIRWORD = { N: 'northbound', E: 'eastbound', S: 'southbound', W: 'westbound' };
 const letter = d => { const m = /^(north|south|east|west)/i.exec(d?.name || ''); return m ? m[1][0].toUpperCase() : null; };
 
 export function mountSurface(ctx) {
+  if (ctx.state.agency === 'go') return mountGoMap(ctx);
   const { state, root, header, save } = ctx;
   const s = state.surface;
   let routes = null, cfg = null, preds = [], err = null, timer = 0, stopButtons = new Map(), panel = null;

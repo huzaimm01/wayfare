@@ -34,7 +34,10 @@ export function mountBoard(ctx) {
   const unit = h('span', { class: 'unit' });
   const clock = h('p', { class: 'clock' });
   const next = h('p', { class: 'next' });
-  const where = h('p', { class: 'where' });
+  // The station name is the way to change it. GO opens the service map;
+  // TTC opens the picker. (The title button switches GO lines instead,
+  // so it cannot do this job.)
+  const where = h('button', { class: 'where', type: 'button', onclick: () => ctx.pickStation(), 'aria-label': 'Change station' });
   const note = h('p', { class: 'note' });
   const sr = h('p', { class: 'sr', 'aria-live': 'polite' });
   const board = h('div', { class: 'board' },

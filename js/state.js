@@ -1,6 +1,6 @@
 const KEY = 'wf_v1';
 const base = () => ({
-  agency: 'go', view: 'board', colour: true,
+  agency: 'go', view: 'board', colour: true, mapTheme: 'dark',
   go: { stop: null, line: null, dir: null },
   ttc: { line: '1', station: null, dir: null },
   surface: { route: null, routeTitle: null, dir: null, stop: null },

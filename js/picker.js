@@ -7,7 +7,7 @@ export async function openPicker({ title, load, onPick, emptyText }) {
   const status = h('p', { class: 'note', 'aria-live': 'polite' }, 'Loading');
   const list = h('ul', { class: 'list' });
   const near = h('button', { class: 'btn', type: 'button', hidden: true }, 'Sort by distance');
-  const close = h('button', { class: 'btn close-btn', type: 'button', onclick: () => dlg.close() }, 'Close');
+  const close = h('button', { class: 'btn close-btn', type: 'button', onclick: () => dlg.closeSheet() }, 'Close');
   body.replaceChildren(h('h2', {}, title), input, h('div', { class: 'row center' }, near, close), status, list);
   if (!dlg.open) dlg.showModal();
 
@@ -18,7 +18,7 @@ export async function openPicker({ title, load, onPick, emptyText }) {
     if (pos) hits = hits.filter(i => i.lat != null).map(i => ({ ...i, d: haversine(pos, i) })).sort((a, b) => a.d - b.d);
     hits = hits.slice(0, 60);
     status.textContent = hits.length ? '' : (emptyText || 'Nothing matches that.');
-    list.replaceChildren(...hits.map(i => h('li', {}, h('button', { type: 'button', onclick: () => { dlg.close(); onPick(i); } },
+    list.replaceChildren(...hits.map(i => h('li', {}, h('button', { type: 'button', onclick: () => { dlg.closeSheet(); onPick(i); } },
       h('span', {}, i.label), h('span', { class: 'sub' }, i.d != null ? fmtDistance(i.d) : i.sub || '')))));
   };
   input.addEventListener('input', draw);
