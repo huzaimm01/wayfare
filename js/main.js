@@ -1,4 +1,4 @@
-import { $, h, palette } from './util.js';
+import { $, h, palette, attachSheet } from './util.js';
 import { loadState, saveState } from './state.js';
 import { AGENCIES, LOGOS } from './config.js';
 import { mountBoard } from './board.js';
@@ -15,31 +15,23 @@ let subway = null; // station data built by tools/build-subway.mjs
 const views = { board: mountBoard, surface: mountSurface, leave: mountLeave };
 let current = null;
 
-// The header background is a line colour, so the logo has to reverse with it:
-// white logo on dark backgrounds (white foreground), colour logo on light ones.
-let currentFg = '#ffffff'; // default background #2b2e35 is dark, so white wins
+// The bars use Apple's neutral glass, so the logo reverses with the OS appearance:
+// white logo in dark mode, colour logo in light mode.
+const barDark = () => window.matchMedia('(prefers-color-scheme: dark)').matches;
 const logoSrc = () => {
   const l = LOGOS[state.agency];
   if (!l) return '';
-  return currentFg === '#ffffff' ? (l.white || l.color) : l.color;
+  return barDark() ? (l.white || l.color) : l.color;
 };
 
 function setPalette(bg) {
   const p = palette(state.colour ? bg : '#2b2e35');
   const s = document.documentElement.style;
   s.setProperty('--bg', p.bg); s.setProperty('--fg', p.fg); s.setProperty('--dim', p.dim);
-  // Light palettes (yellow, orange) would put dark text on a light sheet: yellow on yellow.
-  // Those get a dark sheet instead; the palette colour survives as the accent.
-  const light = p.fg === '#111111';
-  s.setProperty('--sheet-bg', light ? '#191c20' : p.bg);
-  s.setProperty('--sheet-fg', light ? '#ffffff' : p.fg);
   s.setProperty('--accent', p.bg);
   $('meta[name=theme-color]').setAttribute('content', p.bg);
-  if (p.fg !== currentFg) {
-    currentFg = p.fg;
-    const img = header.mark.querySelector('img');
-    if (img) img.src = logoSrc();
-  }
+  const img = header.mark.querySelector('img');
+  if (img) img.src = logoSrc();
 }
 
 function drawMark() {
@@ -102,12 +94,14 @@ function openMenu() {
     h('div', { class: 'row' },
       h('button', { class: 'btn', type: 'button', onclick: () => { dlg.close(); pickStation(); } }, 'Choose station'),
       h('a', { class: 'btn', href: 'privacy.html' }, 'Privacy')),
-    h('button', { class: 'btn primary wide', type: 'button', onclick: () => dlg.close() }, 'Close'),
+    h('button', { class: 'btn primary wide close-btn', type: 'button', onclick: () => dlg.close() }, 'Close'),
     h('p', { class: 'note small' }, 'Unofficial. Not affiliated with the TTC, GO Transit or Metrolinx. Contains information licensed under the Open Government Licence – Ontario.'));
   dlg.showModal();
 }
 
 const ctx = { state, root, header, save, setPalette, navigate, pickStation, subwayReady: () => !subway || Object.keys(subway.lines).length > 0 };
+attachSheet($('#menu')); attachSheet($('#picker'));
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => drawMark());
 $('#agencyBtn').addEventListener('click', openMenu);
 document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => {
   if (b.dataset.view === 'surface' && state.agency !== 'ttc') { state.agency = 'ttc'; save(); }

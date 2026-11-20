@@ -37,3 +37,43 @@ export function palette(bg) {
 }
 
 export function setText(el, text) { if (el.textContent !== text) el.textContent = text; }
+
+// Sheets close by swiping down from the top handle, tapping the backdrop, or Esc.
+// The Close button is desktop-only (see CSS); on touch the swipe is the way out.
+export function attachSheet(dlg) {
+  if (dlg.dataset.sheetWired) return;
+  dlg.dataset.sheetWired = '1';
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const handle = document.createElement('div');
+  handle.className = 'drag'; handle.setAttribute('aria-hidden', 'true');
+  dlg.prepend(handle);
+  const finish = () => { dlg.style.transform = ''; dlg.style.opacity = ''; dlg.style.transition = ''; dlg.style.animation = ''; };
+  dlg.addEventListener('close', finish);
+  const closeSheet = () => {
+    if (reduce || !dlg.open) { dlg.close(); return; }
+    dlg.style.transition = 'transform .18s ease, opacity .18s ease';
+    dlg.style.transform = 'translateY(110%)'; dlg.style.opacity = '0';
+    setTimeout(() => dlg.close(), 180);
+  };
+  dlg.addEventListener('click', e => { if (e.target === dlg) closeSheet(); });
+  let startY = null, dy = 0, tracking = false;
+  handle.addEventListener('pointerdown', e => {
+    tracking = true; startY = e.clientY; dy = 0;
+    dlg.style.animation = 'none'; dlg.style.transition = 'none';
+    try { handle.setPointerCapture(e.pointerId); } catch {}
+  });
+  handle.addEventListener('pointermove', e => {
+    if (!tracking) return;
+    dy = Math.max(0, e.clientY - startY);
+    dlg.style.transform = `translateY(${dy}px)`;
+  });
+  const end = () => {
+    if (!tracking) return; tracking = false;
+    if (dy > 110) { closeSheet(); return; }
+    dlg.style.transition = 'transform .25s cubic-bezier(.2,.9,.25,1.2)';
+    dlg.style.transform = '';
+    setTimeout(() => { dlg.style.transition = ''; }, 260);
+  };
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
+}

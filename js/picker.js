@@ -7,8 +7,8 @@ export async function openPicker({ title, load, onPick, emptyText }) {
   const status = h('p', { class: 'note', 'aria-live': 'polite' }, 'Loading');
   const list = h('ul', { class: 'list' });
   const near = h('button', { class: 'btn', type: 'button', hidden: true }, 'Sort by distance');
-  const close = h('button', { class: 'btn', type: 'button', onclick: () => dlg.close() }, 'Close');
-  body.replaceChildren(h('h2', {}, title), input, h('div', { class: 'row' }, near, close), status, list);
+  const close = h('button', { class: 'btn close-btn', type: 'button', onclick: () => dlg.close() }, 'Close');
+  body.replaceChildren(h('h2', {}, title), input, h('div', { class: 'row center' }, near, close), status, list);
   if (!dlg.open) dlg.showModal();
 
   let items = [], pos = null;

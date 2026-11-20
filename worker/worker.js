@@ -126,14 +126,27 @@ async function subway(p) {
   if (!ok.length) throw new Error('upstream');
   const now = Date.now(), seen = new Set(), items = [];
   ok.forEach(v => walk(v, o => {
+    const dirText = String(pick(o, 'directionText', 'traindirection', 'destination', 'towards', 'dest', 'direction') ?? '');
+    const id = String(pick(o, 'trainid', 'trainId', 'vehicleId') ?? '');
+    const msg = String(pick(o, 'train_message', 'message', 'status') ?? '');
+    // Real NTAS shape (verified 2026-11-19): nextTrains is a comma string,
+    // e.g. "1, 2, 6", one entry per approaching train, no per-train id.
+    const nt = pick(o, 'nextTrains', 'next_trains');
+    if (typeof nt === 'string') {
+      nt.split(',').map(s => parseFloat(s)).filter(Number.isFinite).forEach(m => {
+        const k = `${id}|${dirText}|${m}`;
+        if (seen.has(k)) return;
+        seen.add(k);
+        items.push({ ts: now + m * 60000, dirText, trainId: id, message: msg });
+      });
+      return;
+    }
     const m = parseFloat(pick(o, 'timint', 'timeInt', 'minutes', 'mins', 'arrivalMinutes'));
     if (!Number.isFinite(m)) return;
-    const dirText = String(pick(o, 'traindirection', 'direction', 'directionText', 'destination', 'towards', 'dest') ?? '');
-    const id = String(pick(o, 'trainid', 'trainId', 'vehicleId') ?? '');
     const k = `${id}|${dirText}|${m}`;
     if (seen.has(k)) return;
     seen.add(k);
-    items.push({ ts: now + m * 60000, dirText, trainId: id, message: String(pick(o, 'train_message', 'message', 'status') ?? '') });
+    items.push({ ts: now + m * 60000, dirText, trainId: id, message: msg });
   }));
   items.sort((a, b) => a.ts - b.ts);
   return p.get('debug') ? { items, raw: ok } : { items };
