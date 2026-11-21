@@ -52,6 +52,7 @@ main.top{align-items:stretch;gap:12px}
 nav{flex:none;display:flex;justify-content:center;gap:clamp(14px,6vw,44px);padding:6px 16px calc(14px + env(safe-area-inset-bottom,0px));background:color-mix(in srgb,var(--bg) 86%,black 14%);border-top:1px solid color-mix(in srgb,var(--fg) 12%,transparent);box-shadow:0 -8px 24px rgba(0,0,0,.2);color:var(--fg);transition:background-color .35s ease,border-color .35s ease}
 nav button{padding:10px 4px;font-size:1.1rem;color:var(--dim);border-bottom:3px solid transparent;opacity:.85;transition:color .3s ease,border-color .3s ease,opacity .3s ease}
 nav button[aria-current=page]{color:var(--fg);border-bottom-color:currentColor;opacity:1}
+body.map-nav-seamless nav{background:var(--bg);border-top-color:transparent;box-shadow:none}
 
 .btn{display:inline-block;padding:12px 18px;border:2px solid currentColor;border-radius:18px;font-family:var(--ui);font-size:1rem;text-decoration:none;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.22)}
 .btn.wide{width:100%}

@@ -50,6 +50,10 @@ export function mountGoMap(ctx) {
   const canvas = () => (state.colour ? theme.canvas : '#2b2e35');
   // The palette is the canvas colour, so the bottom nav matches the map.
   ctx.setPalette(theme.canvas);
+  // The nav is one continuous surface with the map: exactly the canvas
+  // colour, no border line, no shadow. The class comes off on unmount so
+  // the other views keep their shaded nav.
+  document.body.classList.add('map-nav-seamless');
   const docStyle = document.documentElement.style;
   const applyChrome = () => {
     docStyle.setProperty('--bar-bg', theme.bar);
@@ -95,8 +99,8 @@ export function mountGoMap(ctx) {
   pills.style.webkitMaskImage = 'linear-gradient(to right, #000 0, #000 calc(100% - 30px), transparent 100%)';
   const top = h('div', { class: 'map-top' }, searchWrap, pills);
   const zoomBox = h('div', { class: 'map-zoom' },
-    h('button', { type: 'button', 'aria-label': 'Zoom in', onclick: () => zoomAt(0.7, cam.x + cam.w / 2, cam.y + (cam.w * H / W) / 2) }, '+'),
-    h('button', { type: 'button', 'aria-label': 'Zoom out', onclick: () => zoomAt(1.4, cam.x + cam.w / 2, cam.y + (cam.w * H / W) / 2) }, '−'),
+    h('button', { type: 'button', 'aria-label': 'Zoom in', onclick: () => { zoomAt(0.7, cam.x + cam.w / 2, cam.y + (cam.w * H / W) / 2); updateHitRadii(); } }, '+'),
+    h('button', { type: 'button', 'aria-label': 'Zoom out', onclick: () => { zoomAt(1.4, cam.x + cam.w / 2, cam.y + (cam.w * H / W) / 2); updateHitRadii(); } }, '−'),
     h('button', { type: 'button', 'aria-label': 'Reset view', onclick: resetView }, '↺'));
   const themeBtn = h('button', { class: 'map-theme', type: 'button', 'aria-label': 'Switch map theme' }, state.mapTheme === 'dark' ? '☀' : '☾');
 
@@ -158,12 +162,18 @@ export function mountGoMap(ctx) {
   buildPills();
 
   function setFilter(id) {
+    // Tapping a line switches just the line: the highlight changes and the
+    // camera stays where it is, so switching lines while zoomed in does not
+    // fling the map around. Tapping the line that is already active fits
+    // the whole line to the screen, so you can see it end to end.
+    // "All lines" resets the view.
+    if (id !== 'ALL' && id === filter) { fitLine(id); return; }
     filter = id;
     paintPills();
     applyHighlight();
     updateLabels();
     if (id === 'ALL') animateCameraTo(0, 0, W, 550);
-    else fitLine(id);
+    else if (selected && !drawer.hidden) updateStepper(selected);
   }
   function resetView() { closeDrawer(); setFilter('ALL'); }
 
@@ -200,11 +210,26 @@ export function mountGoMap(ctx) {
   document.addEventListener('click', closeDrop);
 
   // ---- camera ----
+  // The svg's box only moves on resize/orientation, so measure it once and
+  // reuse it. Calling getBoundingClientRect() on every animation frame and
+  // every pointermove forces a layout each time, and that is what made
+  // panning, pinching and the camera feel choppy on a phone.
+  let svgRect = null;
+  function measureSvg() {
+    if (!svg) return;
+    const r = svg.getBoundingClientRect();
+    svgRect = { left: r.left, top: r.top, width: r.width, height: r.height };
+    updateHitRadii();
+  }
+  const onResize = () => measureSvg();
+  window.addEventListener('resize', onResize);
   // Keep the tap target about 19 CSS px on screen at any zoom; the visible
-  // station dot stays the same size. Only rewrites when the radius moved.
+  // station dot stays the same size. Only rewrites when the radius moved,
+  // and only when the camera is idle: rewriting a hundred hit circles on
+  // every animation frame is DOM churn the eye reads as jank.
   function updateHitRadii() {
     if (!svg) return;
-    const w = svg.getBoundingClientRect().width;
+    const w = svgRect ? svgRect.width : svg.getBoundingClientRect().width;
     if (!w) return;
     const r = 19 * cam.w / w;
     if (Math.abs(r - lastHitR) < 0.5) return;
@@ -214,7 +239,6 @@ export function mountGoMap(ctx) {
   function applyVb() {
     if (!svg) return;
     svg.setAttribute('viewBox', `${cam.x} ${cam.y} ${cam.w} ${cam.w * H / W}`);
-    updateHitRadii();
   }
   function clampCam() {
     cam.w = clamp(cam.w, 140, W);
@@ -249,7 +273,7 @@ export function mountGoMap(ctx) {
       if (cam.x === W - cam.w && vx > 0) vx = 0;
       if (cam.y === 0 && vy < 0) vy = 0;
       if (cam.y === H - (cam.w * H / W) && vy > 0) vy = 0;
-      if (Math.hypot(vx, vy) < 0.02) { flingId = 0; return; }
+      if (Math.hypot(vx, vy) < 0.02) { flingId = 0; updateHitRadii(); return; }
       flingId = requestAnimationFrame(step);
     };
     flingId = requestAnimationFrame(step);
@@ -262,7 +286,7 @@ export function mountGoMap(ctx) {
       cam.x = sx + (tx - sx) * e; cam.y = sy + (ty - sy) * e; cam.w = sw + (tw - sw) * e;
       applyVb();
       if (t < 1) animId = requestAnimationFrame(step);
-      else { animId = 0; updateLabels(); }
+      else { animId = 0; updateLabels(); updateHitRadii(); }
     };
     animId = requestAnimationFrame(step);
   }
@@ -276,7 +300,7 @@ export function mountGoMap(ctx) {
     clampCam(); applyVb();
   }
   function clientToSvg(cx, cy) {
-    const r = svg.getBoundingClientRect();
+    const r = svgRect || svg.getBoundingClientRect();
     const vh = cam.w * H / W;
     const s = Math.min(r.width / cam.w, r.height / vh);
     const ox = (r.width - cam.w * s) / 2, oy = (r.height - vh * s) / 2;
@@ -294,7 +318,7 @@ export function mountGoMap(ctx) {
   }
   function focusStation(st) {
     const sx = X(st.lng), sy = Y(st.lat);
-    const r = full.getBoundingClientRect();
+    const r = svgRect || full.getBoundingClientRect();
     const tw = Math.min(W, 360);
     const s = Math.min(r.width / tw, r.height / (tw * H / W));
     const desktop = window.matchMedia('(min-width:641px) and (hover:hover) and (pointer:fine)').matches;
@@ -462,7 +486,7 @@ export function mountGoMap(ctx) {
     svg._radar = radar;
     if (old) old.remove();
     full.prepend(svg);
-    updateHitRadii();
+    measureSvg();
     attachPointerHandlers();
     applyHighlight();
     renderRadar();
@@ -499,7 +523,7 @@ export function mountGoMap(ctx) {
       if (!pointers.has(e.pointerId)) return;
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pointers.size === 1 && dragStart) {
-        const k = cam.w / svg.getBoundingClientRect().width;
+        const k = cam.w / (svgRect ? svgRect.width : svg.getBoundingClientRect().width);
         const dx = (e.clientX - dragStart.x) * k, dy = (e.clientY - dragStart.y) * k;
         if (Math.hypot(e.clientX - dragStart.x, e.clientY - dragStart.y) > 6) dragStart.moved = true;
         cam.x = clamp(dragStart.cam.x - dx, 0, W - cam.w);
@@ -514,7 +538,7 @@ export function mountGoMap(ctx) {
         if (dist > 0) {
           const mid = clientToSvg(cx, cy);
           zoomAt(pinchStart.dist / dist, mid.x, mid.y);
-          const k = cam.w / svg.getBoundingClientRect().width;
+          const k = cam.w / (svgRect ? svgRect.width : svg.getBoundingClientRect().width);
           cam.x = clamp(cam.x - (cx - pinchStart.cx) * k, 0, W - cam.w);
           cam.y = clamp(cam.y - (cy - pinchStart.cy) * k, 0, H - (cam.w * H / W));
           applyVb();
@@ -554,11 +578,14 @@ export function mountGoMap(ctx) {
           const a = recent[0], b = recent[recent.length - 1];
           const dt = b.t - a.t;
           if (dt > 0) {
-            const k = cam.w / svg.getBoundingClientRect().width;
+            const k = cam.w / (svgRect ? svgRect.width : svg.getBoundingClientRect().width);
             startFling(-(b.x - a.x) / dt * k, -(b.y - a.y) / dt * k);
           }
         }
       }
+      // The camera is idle now (a fling, if one started, updates the radii
+      // when it settles), so the tap targets match where the map stopped.
+      updateHitRadii();
     };
     svg.addEventListener('pointerup', endPointer);
     svg.addEventListener('pointercancel', endPointer);
@@ -602,17 +629,9 @@ export function mountGoMap(ctx) {
         h('span', { class: 'mins' }, m <= 0 ? 'Now' : m + ' min'));
     }));
   }
-  function fillDrawer(st) {
-    const primary = lines[st.lines[0]];
-    zoneBadge.hidden = !zones[st.code];
-    if (zones[st.code]) zoneBadge.textContent = 'Fare Zone ' + zones[st.code];
-    hubBadge.hidden = !(st.code === 'UN' || st.lines.length > 1);
-    hubBadge.textContent = st.code === 'UN' ? 'Central hub' : 'Multi-line';
-    drawerName.textContent = st.name;
-    linePills.replaceChildren(...st.lines.map(id => h('span', { class: 'linepill', style: `background:${lines[id].color}` }, lines[id].name)));
-    const tr = transfers[st.code] || [];
-    transfersSec.hidden = !tr.length;
-    transferPills.replaceChildren(...tr.map(t => h('span', { class: 'tpill' }, t)));
+  // The stepper walks along one line; the line it walks is the filter when
+  // the station is on it, otherwise the station's first line.
+  function updateStepper(st) {
     const activeLine = filter !== 'ALL' && st.lines.includes(filter) ? filter : st.lines[0];
     const order = lines[activeLine].stations.map(s => s.code);
     const idx = order.indexOf(st.code);
@@ -622,6 +641,26 @@ export function mountGoMap(ctx) {
     nextBtn.textContent = idx >= 0 && idx < order.length - 1 ? byCode[order[idx + 1]].name + ' →' : 'Line end';
     prevBtn.onclick = idx > 0 ? () => selectStation(byCode[order[idx - 1]]) : null;
     nextBtn.onclick = idx >= 0 && idx < order.length - 1 ? () => selectStation(byCode[order[idx + 1]]) : null;
+  }
+  function fillDrawer(st) {
+    const primary = lines[st.lines[0]];
+    zoneBadge.hidden = !zones[st.code];
+    if (zones[st.code]) zoneBadge.textContent = 'Fare Zone ' + zones[st.code];
+    hubBadge.hidden = !(st.code === 'UN' || st.lines.length > 1);
+    hubBadge.textContent = st.code === 'UN' ? 'Central hub' : 'Multi-line';
+    drawerName.textContent = st.name;
+    // The station's lines are real buttons: tapping one switches just that
+    // line, so you can change lines without leaving the station.
+    const activeLine = filter !== 'ALL' && st.lines.includes(filter) ? filter : st.lines[0];
+    linePills.replaceChildren(...st.lines.map(id => {
+      const b = h('button', { class: 'linepill', type: 'button', style: `background:${lines[id].color}`, 'aria-pressed': String(id === activeLine) }, lines[id].name);
+      b.onclick = () => setFilter(id);
+      return b;
+    }));
+    const tr = transfers[st.code] || [];
+    transfersSec.hidden = !tr.length;
+    transferPills.replaceChildren(...tr.map(t => h('span', { class: 'tpill' }, t)));
+    updateStepper(st);
     boardBtn.style.background = primary.color;
     boardBtn.onclick = () => {
       state.go = { stop: { code: st.code, name: st.name, lat: st.lat, lng: st.lng }, line: null, dir: null };
@@ -700,6 +739,8 @@ export function mountGoMap(ctx) {
     cancelAnim();
     clearInterval(depTimer); clearInterval(depTick);
     document.removeEventListener('click', closeDrop);
+    window.removeEventListener('resize', onResize);
+    document.body.classList.remove('map-nav-seamless');
     docStyle.removeProperty('--bar-bg');
     docStyle.removeProperty('--bar-fg');
     docStyle.removeProperty('--sheet-bg');

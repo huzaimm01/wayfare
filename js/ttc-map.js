@@ -48,6 +48,10 @@ export function mountTtcMap(ctx, onBus) {
   const canvas = () => (state.colour ? theme.canvas : '#2b2e35');
   // The palette is the canvas colour, so the bottom nav matches the map.
   ctx.setPalette(theme.canvas);
+  // The nav is one continuous surface with the map: exactly the canvas
+  // colour, no border line, no shadow. The class comes off on unmount so
+  // the other views keep their shaded nav.
+  document.body.classList.add('map-nav-seamless');
   const docStyle = document.documentElement.style;
   const applyChrome = () => {
     docStyle.setProperty('--bar-bg', theme.bar);
@@ -143,12 +147,18 @@ export function mountTtcMap(ctx, onBus) {
   buildPills();
 
   function setFilter(id) {
+    // Tapping a line switches just the line: the highlight changes and the
+    // camera stays where it is, so switching lines while zoomed in does not
+    // fling the map around. Tapping the line that is already active fits
+    // the whole line to the screen, so you can see it end to end.
+    // "All lines" resets the view.
+    if (id !== 'ALL' && id === filter) { fitLine(id); return; }
     filter = id;
     paintPills();
     applyHighlight();
     updateLabels();
     if (id === 'ALL') animateCameraTo(0, 0, W, 700);
-    else fitLine(id);
+    else if (selected && !drawer.hidden) fillDrawer(selected);
   }
   function resetView() { closeDrawer(); setFilter('ALL'); }
 
@@ -185,6 +195,18 @@ export function mountTtcMap(ctx, onBus) {
   document.addEventListener('click', closeDrop);
 
   // ---- camera ----
+  // The svg's box only moves on resize/orientation, so measure it once and
+  // reuse it. Calling getBoundingClientRect() on every animation frame and
+  // every pointermove forces a layout each time, and that is what made
+  // panning, pinching and the camera feel choppy on a phone.
+  let svgRect = null;
+  function measureSvg() {
+    if (!svg) return;
+    const r = svg.getBoundingClientRect();
+    svgRect = { left: r.left, top: r.top, width: r.width, height: r.height };
+  }
+  const onResize = () => measureSvg();
+  window.addEventListener('resize', onResize);
   function applyVb() { if (svg) svg.setAttribute('viewBox', `${cam.x} ${cam.y} ${cam.w} ${cam.w * H / W}`); }
   function clampCam() {
     cam.w = clamp(cam.w, 140, W);
@@ -214,7 +236,7 @@ export function mountTtcMap(ctx, onBus) {
     clampCam(); applyVb();
   }
   function clientToSvg(cx, cy) {
-    const r = svg.getBoundingClientRect();
+    const r = svgRect || svg.getBoundingClientRect();
     const vh = cam.w * H / W;
     const s = Math.min(r.width / cam.w, r.height / vh);
     const ox = (r.width - cam.w * s) / 2, oy = (r.height - vh * s) / 2;
@@ -232,7 +254,7 @@ export function mountTtcMap(ctx, onBus) {
   }
   function focusStation(st) {
     const sx = X(st.lng), sy = Y(st.lat);
-    const r = full.getBoundingClientRect();
+    const r = svgRect || full.getBoundingClientRect();
     const tw = Math.min(W, 360);
     const s = Math.min(r.width / tw, r.height / (tw * H / W));
     const desktop = window.matchMedia('(min-width:641px) and (hover:hover) and (pointer:fine)').matches;
@@ -369,6 +391,7 @@ export function mountTtcMap(ctx, onBus) {
     svg._radar = radar;
     if (old) old.remove();
     full.prepend(svg);
+    measureSvg();
     attachPointerHandlers();
     applyHighlight();
     renderRadar();
@@ -404,7 +427,7 @@ export function mountTtcMap(ctx, onBus) {
       if (!pointers.has(e.pointerId)) return;
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pointers.size === 1 && dragStart) {
-        const k = cam.w / svg.getBoundingClientRect().width;
+        const k = cam.w / (svgRect ? svgRect.width : svg.getBoundingClientRect().width);
         const dx = (e.clientX - dragStart.x) * k, dy = (e.clientY - dragStart.y) * k;
         if (Math.hypot(e.clientX - dragStart.x, e.clientY - dragStart.y) > 6) dragStart.moved = true;
         cam.x = clamp(dragStart.cam.x - dx, 0, W - cam.w);
@@ -417,7 +440,7 @@ export function mountTtcMap(ctx, onBus) {
         if (dist > 0) {
           const mid = clientToSvg(cx, cy);
           zoomAt(pinchStart.dist / dist, mid.x, mid.y);
-          const k = cam.w / svg.getBoundingClientRect().width;
+          const k = cam.w / (svgRect ? svgRect.width : svg.getBoundingClientRect().width);
           cam.x = clamp(cam.x - (cx - pinchStart.cx) * k, 0, W - cam.w);
           cam.y = clamp(cam.y - (cy - pinchStart.cy) * k, 0, H - (cam.w * H / W));
           applyVb();
@@ -500,7 +523,15 @@ export function mountTtcMap(ctx, onBus) {
     hubBadge.hidden = !(st.name === 'Union' || st.lines.length > 1);
     hubBadge.textContent = st.name === 'Union' ? 'Central hub' : 'Multi-line';
     drawerName.textContent = st.name;
-    linePills.replaceChildren(...st.lines.map(id => h('span', { class: 'linepill', style: `background:${SUBWAY[id].color}` }, SUBWAY[id].name)));
+    // The station's lines are real buttons: tapping one switches just that
+    // line, so you can change lines without leaving the station. The
+    // departures and the stepper follow the new line.
+    const active = activeLine();
+    linePills.replaceChildren(...st.lines.map(id => {
+      const b = h('button', { class: 'linepill', type: 'button', style: `background:${SUBWAY[id].color}`, 'aria-pressed': String(id === active) }, SUBWAY[id].name);
+      b.onclick = () => setFilter(id);
+      return b;
+    }));
     const order = lines[line].stations.map(s => s.name);
     const idx = order.indexOf(st.name);
     prevBtn.disabled = idx <= 0;
@@ -590,6 +621,8 @@ export function mountTtcMap(ctx, onBus) {
     cancelAnim();
     clearInterval(depTimer); clearInterval(depTick);
     document.removeEventListener('click', closeDrop);
+    window.removeEventListener('resize', onResize);
+    document.body.classList.remove('map-nav-seamless');
     docStyle.removeProperty('--bar-bg');
     docStyle.removeProperty('--bar-fg');
     docStyle.removeProperty('--sheet-bg');
